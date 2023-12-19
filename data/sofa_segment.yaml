@@ -1,0 +1,4 @@
+path: /content/drive/MyDrive/_Константин/segmentation/yolo_v5/sofa_segment/
+train: /content/drive/MyDrive/_Константин/segmentation/yolo_v5/sofa_segment/train
+val: /content/drive/MyDrive/_Константин/segmentation/yolo_v5/sofa_segment/val
+nc: 1

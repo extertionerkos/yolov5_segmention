@@ -76,7 +76,7 @@ def run(
     project=ROOT / 'runs/predict-seg',  # save results to project/name
     name='exp',  # save results to project/name
     exist_ok=False,  # existing project/name ok, do not increment
-    line_thickness=3,  # bounding box thickness (pixels)
+    line_thickness=1,  # bounding box thickness (pixels)
     hide_labels=False,  # hide labels
     hide_conf=False,  # hide confidences
     half=False,  # use FP16 half-precision inference
@@ -84,6 +84,8 @@ def run(
     vid_stride=1,  # video frame-rate stride
     retina_masks=False,
 ):
+    #print('Я здесь !!!')
+    list_masks, list_im0 = [], []
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
     is_file = Path(source).suffix[1:] in (IMG_FORMATS + VID_FORMATS)
@@ -94,9 +96,10 @@ def run(
         source = check_file(source)  # download
 
     # Directories
-    save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
-    (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
-
+    #save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
+    #(save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+    save_dir = name
+    
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
@@ -119,6 +122,8 @@ def run(
     model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
+        #print('============path, im, im0s, vid_cap, s=', s)
+        #print('im shape=', im.shape, '   im0s shape=', im0s.shape)
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
@@ -140,6 +145,7 @@ def run(
 
         # Process predictions
         for i, det in enumerate(pred):  # per image
+            #print('len2222222(det)=', len(det))
             seen += 1
             if webcam:  # batch_size >= 1
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
@@ -148,20 +154,30 @@ def run(
                 p, im0, frame = path, im0s.copy(), getattr(dataset, 'frame', 0)
 
             p = Path(p)  # to Path
-            save_path = str(save_dir / p.name)  # im.jpg
-            txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
+            #save_path = str(save_dir / p.name)  # im.jpg
+            #print('p=', p)
+            #print('p.name=', p.name)
+            x = p.name.split('.')[0].split('_')[0]
+            save_path = f'{save_dir}/{x}_seg.jpg'
+            
+            #txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
             s += '%gx%g ' % im.shape[2:]  # print string
             imc = im0.copy() if save_crop else im0  # for save_crop
             annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            
             if len(det):
+                #print('len(det)=', len(det))
                 if retina_masks:
+                    #print('============================len(det)=', len(det))
                     # scale bbox first the crop masks
                     det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()  # rescale boxes to im0 size
                     masks = process_mask_native(proto[i], det[:, 6:], det[:, :4], im0.shape[:2])  # HWC
+                    
                 else:
                     masks = process_mask(proto[i], det[:, 6:], det[:, :4], im.shape[2:], upsample=True)  # HWC
                     det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()  # rescale boxes to im0 size
-
+                    #print('22222masks shape=', masks.shape)    
+                list_masks.append(masks)
                 # Segments
                 if save_txt:
                     segments = [
@@ -211,6 +227,7 @@ def run(
             if save_img:
                 if dataset.mode == 'image':
                     cv2.imwrite(save_path, im0)
+                    list_im0.append(im0)
                 else:  # 'video' or 'stream'
                     if vid_path[i] != save_path:  # new video
                         vid_path[i] = save_path
@@ -237,7 +254,8 @@ def run(
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}{s}")
     if update:
         strip_optimizer(weights[0])  # update model (to fix SourceChangeWarning)
-
+    
+    return list_masks, list_im0
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -262,7 +280,7 @@ def parse_opt():
     parser.add_argument('--project', default=ROOT / 'runs/predict-seg', help='save results to project/name')
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
-    parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
+    parser.add_argument('--line-thickness', default=1, type=int, help='bounding box thickness (pixels)')
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
@@ -277,8 +295,8 @@ def parse_opt():
 
 def main(opt):
     check_requirements(ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
-    run(**vars(opt))
-
+    masks_pred = run(**vars(opt))
+    print(masks_pred)
 
 if __name__ == '__main__':
     opt = parse_opt()
